@@ -7,6 +7,9 @@ import (
     "strings"
     "strconv"
 	"sync"
+	"runtime"
+	"time"
+	//"net/http/pprof"
 )
 
 type Sudoku struct {
@@ -23,14 +26,20 @@ func (this Sudoku) ReadFile() []Sudoku{
   }
 
   for _, f := range files {
-          fmt.Println(f.Name())
+          //fmt.Println(f.Name())
           b, err := ioutil.ReadFile(path + f.Name()) // just pass the file name
           if err != nil {
               fmt.Print(err)
           }
 
           str := string(b) // convert content to a 'string'
-          var valuesInFiles = strings.Split(str, "\r\n")
+		  var valuesInFiles []string
+
+		  if strings.ContainsAny(str, "\r") { //if .txt mac/linux or windows
+			valuesInFiles = strings.Split(str, "\r\n")
+		  } else {
+			  valuesInFiles = strings.Split(str, "\n")
+		  }
 
           for index, _ := range valuesInFiles {
               var valuesInArray = strings.Split(valuesInFiles[index], "")
@@ -39,14 +48,14 @@ func (this Sudoku) ReadFile() []Sudoku{
                   if(valuesInArray[o] == ".") {
                     value = 0
                   } else {
-                    v, _ := strconv.Atoi(valuesInArray[o])
+                    v, _ := strconv.Atoi(valuesInArray[o]) //convert string to int
                     value = v
                   }
                   this.Grid[index][o] = value
               }
 
           }
-          fmt.Println(this)
+          //fmt.Println(this)
           arrayReturn = append(arrayReturn, this)
   }
   return arrayReturn
@@ -116,7 +125,8 @@ func (this *Sudoku) Check() bool {
 
 func (this *Sudoku) Solve() {
 	coords := this.getMissingsNumbers()
-	fmt.Println(this.solveRecursion(coords))
+	//fmt.Println(this.solveRecursion(coords))
+	this.solveRecursion(coords)
 }
 
 func (this *Sudoku) getMissingsNumbers() (res [][2]int) {
@@ -128,7 +138,7 @@ func (this *Sudoku) getMissingsNumbers() (res [][2]int) {
 			}
 		}
 	}
-	fmt.Println(res)
+	//fmt.Println(res)
 	return
 }
 
@@ -187,34 +197,49 @@ func (this *Sudoku) checkCoord(cy int, cx int, nVal int) bool {
 	return true
 }
 
-func solver(ch chan Sudoku, wg *sync.WaitGroup) {
+func solver(ch chan Sudoku, ch2 chan Sudoku, wg *sync.WaitGroup) { //channel 1 for unresolved sudoku
 	for {
 		var val Sudoku
-		val = <- ch // Receive
-		fmt.Println()
+		val = <- ch
 		val.Solve()
-		val.Display()
-		fmt.Println()
-		wg.Done()
+		ch2 <- val
+	}
+}
+
+func go_display(ch2 chan Sudoku, wg *sync.WaitGroup){ //channel 2 for resolved sudoku
+	for {
+		var val Sudoku
+	    val = <- ch2
+	    fmt.Println()
+	    val.Display()
+	    fmt.Println()
+	    wg.Done()
 	}
 }
 
 func main() {
+	start_time := time.Now()
 	var base Sudoku
 	var ch chan Sudoku
+	var ch2 chan Sudoku
     ch = make(chan Sudoku)
+	ch2 = make(chan Sudoku)
     var wg sync.WaitGroup
 
-	var table = base.ReadFile()
+	var table = base.ReadFile() //get array of Grid[9][9]
 
-	go solver(ch, &wg) // renvoyer un deuxième channel pour un seul Display (par rapport au solver)
-	go solver(ch, &wg)
-	go solver(ch, &wg)
-	go solver(ch, &wg)
+	for i := 0; i < runtime.NumCPU(); i++ { //Check nb logical core
+		go solver(ch, ch2, &wg)
+	}
+	go go_display(ch2, &wg)
 
 	for _, val := range table {
 		wg.Add(1)
 		ch <- val
 	}
 	wg.Wait()
+	//fmt.Println(runtime.NumCPU())
+	fmt.Print("The complete operation took : ")
+	end_time := time.Now()
+	fmt.Print(end_time.Sub(start_time))
 }
