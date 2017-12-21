@@ -17,9 +17,8 @@ type Sudoku struct {
   Grid[9][9]int
 }
 
-func (this Sudoku) ReadFile() []Sudoku{
+func (this Sudoku) ReadFile(ch chan Sudoku, wg *sync.WaitGroup){
   const path = "./Sudoku/";
-  var arrayReturn []Sudoku
 
   files, err := ioutil.ReadDir(path)
   if err != nil {
@@ -55,9 +54,9 @@ func (this Sudoku) ReadFile() []Sudoku{
               }
 
           }
-          arrayReturn = append(arrayReturn, this)
+        wg.Add(1)
+  		ch <- this
   }
-  return arrayReturn
 
 }
 
@@ -226,21 +225,17 @@ func main() {
 	var base Sudoku
 	var ch chan Sudoku
 	var ch2 chan Sudoku
-    ch = make(chan Sudoku)
+	ch = make(chan Sudoku)
 	ch2 = make(chan Sudoku)
     var wg sync.WaitGroup
-
-	var table = base.ReadFile() //get array of Grid[9][9]
 
 	for i := 0; i < runtime.NumCPU(); i++ { //Check nb logical core
 		go solver(ch, ch2)
 	}
 	go go_display(ch2, &wg)
 
-	for _, val := range table {
-		wg.Add(1)
-		ch <- val
-	}
+	base.ReadFile(ch, &wg)
+
 	wg.Wait()
 	//fmt.Println(runtime.NumCPU())
 	fmt.Print("The complete operation took : ")
